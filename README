@@ -23,6 +23,7 @@ the proper glib was uses.  Here is my recipie:
 
 $ export PKG_CONFIG=/opt/local/bin/pkg-config
 $ export PKG_CONFIG_PATH=/opt/local/lib/pkgconfig:/opt/X11/lib/pkgconfig
+$ ./autogen.sh
 $ CFLAGS=-I/opt/local/include LDFLAGS=-L/opt/local/lib ./configure --prefix /opt/local
 $ make
 

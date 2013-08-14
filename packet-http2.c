@@ -25,14 +25,6 @@
 
 #include "config.h"
 
-
-/* Include only as needed */
-#if 0
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#endif
-
 #include <glib.h>
 
 #include <epan/packet.h>
@@ -47,8 +39,10 @@
  * preferences get changed. */
 void proto_reg_handoff_http2(void);
 
-#define FRAME_HEADER_LEN 8
-#define MAGIC_FRAME_LENGTH 24
+#define FRAME_HEADER_LENGTH    8
+#define MAGIC_FRAME_LENGTH    24
+#define DEFAULT_PORT         443
+#define ALTERNATE_PORT      8443
 
 typedef struct
 {
@@ -56,7 +50,7 @@ typedef struct
         unsigned char  type;
         unsigned char  flags;
         unsigned int   streamid;
-} http2_frame;
+} http2_frame_header;
 
 static const value_string frametypenames[] = {
         { 0, "DATA" },
@@ -70,22 +64,14 @@ static const value_string frametypenames[] = {
         { 0, NULL }
 };
 
-
 /* Initialize the protocol and registered fields */
-static int proto_http2 = -1;
+static int proto_http2       = -1;
 static int hf_http2_length   = -1;
 static int hf_http2_type     = -1;
 static int hf_http2_flags    = -1;
 static int hf_http2_streamid = -1;
 static int hf_http2_payload  = -1;
 static int hf_http2_magic    = -1;
-
-/* Global sample preference ("controls" display of numbers) */
-static gboolean gPREF_HEX = FALSE;
-/* Global sample port preference - real port preferences should generally
- * default to 0 unless there is an IANA-registered (or equivalent) port for your
- * protocol. */
-static guint gPORT_PREF = 8443;
 
 /* Initialize the subtree pointers */
 static gint ett_http2          = -1;
@@ -104,52 +90,30 @@ static    guint8 kMagicHello[] = {
 
 static dissector_handle_t http2_handle;
 
-#if 0
-void
-http2_debug_printf(const gchar* fmt, ...)
-{
-        va_list ap;
-
-        va_start(ap, fmt);
-        vfprintf(stderr, fmt, ap);
-        va_end(ap);
-}
-#else
-#define http2_debug_printf(...)
-#endif
-
 
 static void
 dissect_http2_frame_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree )
 {
-
-        
         proto_item *ti;
         proto_tree *http2_tree;
-        int offset = 0;
+        guint32 offset = 0;
     
         guint8 *magic;
 
+        http2_frame_header frame;
 
-    
-
-        http2_frame frame;
-
-        http2_debug_printf( "Disection frame: offset = %d - ", offset );
-
-        if ( (tvb_length( tvb ) - offset) >= 24 ) {
-                magic = tvb_get_ephemeral_string(tvb, offset, 24);
-                if ( magic && memcmp( magic, kMagicHello, 24 ) == 0 ) {
-                        http2_debug_printf( "Magic\n" );
+        if ( (tvb_length( tvb ) - offset) >= MAGIC_FRAME_LENGTH ) {
+                magic = tvb_get_ephemeral_string(tvb, offset, MAGIC_FRAME_LENGTH);
+                if ( magic && memcmp( magic, kMagicHello, MAGIC_FRAME_LENGTH ) == 0 ) {
                         col_append_sep_str( pinfo->cinfo, COL_INFO, ", ", "Magic" );
                     
-                        ti = proto_tree_add_item(tree, proto_http2, tvb, offset, 24, ENC_NA);
+                        ti = proto_tree_add_item(tree, proto_http2, tvb, offset, MAGIC_FRAME_LENGTH, ENC_NA);
                         proto_item_append_text( ti, ", Magic" );
 
                         http2_tree = proto_item_add_subtree(ti, ett_http2);
                     
                         proto_tree_add_item(http2_tree, hf_http2_magic, tvb,
-                                            offset, 24, ENC_BIG_ENDIAN);
+                                            offset, MAGIC_FRAME_LENGTH, ENC_BIG_ENDIAN);
                         return;
                 }
         }
@@ -160,15 +124,12 @@ dissect_http2_frame_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree )
         frame.flags    = tvb_get_guint8( tvb, offset + 3 );
         frame.streamid = tvb_get_ntohl( tvb, offset + 4 );
 
-        http2_debug_printf( "Type = %d, Length = %d, Flags = %d, streamid = %d\n",
-                            frame.type, frame.length, frame.flags, frame.streamid );
-
         col_append_sep_fstr( pinfo->cinfo, COL_INFO, ", ", "%s",
                              val_to_str( frame.type, frametypenames, "Unknown (0x%02X)" ) );
 
     
         /* create display subtree for the protocol */
-        ti = proto_tree_add_item(tree, proto_http2, tvb, offset, 8 + frame.length, ENC_NA);
+        ti = proto_tree_add_item(tree, proto_http2, tvb, offset, FRAME_HEADER_LENGTH + frame.length, ENC_NA);
 
         proto_item_append_text( ti, ", %s", val_to_str( frame.type, frametypenames, "Unknown (0x%02X)" ) );
         proto_item_append_text( ti, ", Length: %d, Flags: %d, streamid: %d",
@@ -189,7 +150,7 @@ dissect_http2_frame_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree )
         proto_tree_add_item(http2_tree, hf_http2_payload, tvb,
                             offset + 8, frame.length, ENC_BIG_ENDIAN);
 
-        offset += frame.length + 8;
+        offset += frame.length + FRAME_HEADER_LENGTH;
 
         return;
 }
@@ -199,15 +160,14 @@ static guint get_http2_message_len( packet_info *pinfo, tvbuff_t *tvb, int offse
         guint8 *magic;
         (void)(pinfo); /* Avoid the unused parameter warning */
 
-        if ( (tvb_length( tvb ) - offset) >= 24 ) {
-                magic = tvb_get_ephemeral_string(tvb, offset, 24);
-                if ( magic && memcmp( magic, kMagicHello, 24 ) == 0 ) {
-                        return 24;
+        if ( (tvb_length( tvb ) - offset) >= MAGIC_FRAME_LENGTH ) {
+                magic = tvb_get_ephemeral_string(tvb, offset, MAGIC_FRAME_LENGTH);
+                if ( magic && memcmp( magic, kMagicHello, MAGIC_FRAME_LENGTH ) == 0 ) {
+                        return MAGIC_FRAME_LENGTH;
                 }
         }
 
-
-        return (guint)tvb_get_ntohs(tvb, offset) + 8;
+        return (guint)tvb_get_ntohs(tvb, offset) + FRAME_HEADER_LENGTH;
 }
 
 
@@ -216,15 +176,13 @@ dissect_http2(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
               void *data _U_)
 {
         /* Check that there's enough data */
-        if (tvb_length(tvb) < FRAME_HEADER_LEN)
+        if (tvb_length(tvb) < FRAME_HEADER_LENGTH)
                 return 0;
-
     
         col_set_str(pinfo->cinfo, COL_PROTOCOL, "http2");
         col_clear(pinfo->cinfo, COL_INFO);
-
     
-        tcp_dissect_pdus( tvb, pinfo, tree, TRUE, FRAME_HEADER_LEN,
+        tcp_dissect_pdus( tvb, pinfo, tree, TRUE, FRAME_HEADER_LENGTH,
                           get_http2_message_len, dissect_http2_frame_pdu );
 
         return tvb_length(tvb); 
@@ -238,11 +196,6 @@ dissect_http2(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 void
 proto_register_http2(void)
 {
-        module_t *http2_module;
-
-        /* Setup list of header fields  See Section 1.6.1 of README.developer for
-         * details. */
-
         static hf_register_info hf[] = {
                 { &hf_http2_length,
                   { "Length", "http2.length",
@@ -288,45 +241,17 @@ proto_register_http2(void)
             
         };
 
+
         /* Register the protocol name and description */
         proto_http2 = proto_register_protocol("HTTP-draft-04/2.0",
                                               "http-2.0", "http2");
+
+        http2_handle = new_register_dissector("http2", dissect_http2, proto_http2);
 
         /* Required function calls to register the header fields and subtrees */
         proto_register_field_array(proto_http2, hf, array_length(hf));
         proto_register_subtree_array(ett, array_length(ett));
 
-        /* Register a preferences module
-         * Currently does not do anything beyond the example
-         */
-        http2_module = prefs_register_protocol(proto_http2,
-                                               proto_reg_handoff_http2);
-        http2_handle = new_register_dissector("http2", dissect_http2, proto_http2);
-
-
-        /* Register a preferences module under the preferences subtree.
-         * Only use this function instead of prefs_register_protocol (above) if you
-         * want to group preferences of several protocols under one preferences
-         * subtree.
-         * 
-         * Argument subtree identifies grouping tree node name, several subnodes can
-         * be specified using slash '/' (e.g. "OSI/X.500" - protocol preferences
-         * will be accessible under Protocols->OSI->X.500-><http-2.0>
-         * preferences node.
-         */
-/*    http2_module = prefs_register_protocol_subtree( "",
-      proto_http2, proto_reg_handoff_http2); */
-
-        /* Register a simple example preference */
-        prefs_register_bool_preference(http2_module, "show_hex",
-                                       "Display numbers in Hex",
-                                       "Enable to display numerical values in hexadecimal.",
-                                       &gPREF_HEX);
-
-        /* Register an example port preference */
-        prefs_register_uint_preference(http2_module, "tcp.port", "http2 TCP Port",
-                                       " http2 TCP port if other than the default",
-                                       10, &gPORT_PREF);
 }
 
 /* If this dissector uses sub-dissector registration add a registration routine.
@@ -353,7 +278,7 @@ proto_reg_handoff_http2(void)
         if (!initialized) {
                 /* Use new_create_dissector_handle() to indicate that
                  * dissect_http2() returns the number of bytes it dissected (or 0
-                 * if it thinks the packet does not belong to HTTP2-draft-04).
+                 * if it thinks the packet does not belong to HTTP-draft-04/2.0).
                  */
                 http2_handle = new_create_dissector_handle(dissect_http2,
                                                            proto_http2);
@@ -372,12 +297,12 @@ proto_reg_handoff_http2(void)
                 dissector_delete_uint("tcp.port", currentPort, http2_handle);
         }
 
-        currentPort = gPORT_PREF;
+        currentPort = DEFAULT_PORT;
 
         dissector_add_uint("tcp.port", currentPort, http2_handle);
 
-        ssl_dissector_add( 8443, "http2", TRUE);
-
+        ssl_dissector_add( DEFAULT_PORT, "http2", TRUE);
+        ssl_dissector_add( ALTERNATE_PORT, "http2", TRUE);
 }
 
 
