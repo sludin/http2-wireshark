@@ -1,0 +1,63 @@
+Wireshark dissector for HTTP-draft-04/2.0
+
+This package provides skeletal support for dissecting HTTP/2.0
+frames in wireshark.  The functionality at this point is fairly
+basic but does give visibility to frames and attempts to sanely
+deal with segmented frames, though that functionality seems a bit
+buggy at this point.
+
+This code and patch was developed against wireshark 1.11.0 on OS X
+10.8.4.  I have no idea if it will work with earlier versions or
+on other operating system.
+
+
+INSTALLATION
+
+Obtain and build the wireshark source:
+
+http://www.wireshark.org/docs/wsdg_html_chunked/ChSrcObtain.html
+
+I built this on a mac running 10.8.4 and macports.  The only trick
+I ran into once the listed prerequisites were installed was to make certain
+the proper glib was uses.  Here is my recipie:
+
+$ export PKG_CONFIG=/opt/local/bin/pkg-config
+$ export PKG_CONFIG_PATH=/opt/local/lib/pkgconfig:/opt/X11/lib/pkgconfig
+$ CFLAGS=-I/opt/local/include LDFLAGS=-L/opt/local/lib ./configure --prefix /opt/local
+$ make
+
+You will want to make certain you build wireshark with gnutls in order
+to use the TLS decryption functionality.
+
+Once you know wireshark builds, apply the include patch for the makefiles,
+copy packet-http2.c into epan/dissectors/, and rebuild.
+
+
+USAGE
+
+As most (all?) of today's HTTP/2.0 traffic is going over TLS you will
+need to make use of the decryption functionality of the wireshark
+SSL dissector.  There are many tutorials out on the web for this,
+but at a high level, go to the SSL protocol preferences, click
+on 'Edit...' for the 'RSA keys list', and then add an entry for the
+ip/port combination you want to decrypt.  The protocol you should add
+is 'http2'.
+
+Note that the easiest way to do this is to make certain you are using
+straight RSA without DH and its variants.
+
+Once you properly set up the SSL decryption ( probably the hardest part )
+the http2 frames should be visible.
+
+
+QUESTIONS
+
+sludin@ludin.org
+
+
+DISCLAIMER
+
+This submission is supplied without any WARRANTY (EXPRESSED or IMPLIED)
+and is intended in good faith to provide the community with a
+way to example HTTP-draft-04/2.0 traffic in wireshark.
+
