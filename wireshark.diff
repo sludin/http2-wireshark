@@ -1,0 +1,24 @@
+Index: epan/dissectors/Makefile.common
+===================================================================
+--- epan/dissectors/Makefile.common	(revision 51342)
++++ epan/dissectors/Makefile.common	(working copy)
+@@ -1237,6 +1237,7 @@
+ 	packet-zep.c		\
+ 	packet-ziop.c		\
+ 	packet-zrtp.c	\
++        packet-http2.c \
+ 	$(CUSTOM_DISSECTOR_SRC)
+ 
+ #
+Index: epan/CMakeLists.txt
+===================================================================
+--- epan/CMakeLists.txt	(revision 51342)
++++ epan/CMakeLists.txt	(working copy)
+@@ -1307,6 +1307,7 @@
+ 	dissectors/packet-zep.c
+ 	dissectors/packet-ziop.c
+ 	dissectors/packet-zrtp.c
++	dissectors/packet-http2.c
+ )
+ 
+ set(DIRTY_DISSECTOR_SRC
