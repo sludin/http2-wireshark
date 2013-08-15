@@ -98,24 +98,23 @@ dissect_http2_frame_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree )
         proto_tree *http2_tree;
         guint32 offset = 0;
     
-        guint8 *magic;
-
         http2_frame_header frame;
 
-        if ( (tvb_length( tvb ) - offset) >= MAGIC_FRAME_LENGTH ) {
-                magic = tvb_get_ephemeral_string(tvb, offset, MAGIC_FRAME_LENGTH);
-                if ( magic && memcmp( magic, kMagicHello, MAGIC_FRAME_LENGTH ) == 0 ) {
-                        col_append_sep_str( pinfo->cinfo, COL_INFO, ", ", "Magic" );
-                    
-                        ti = proto_tree_add_item(tree, proto_http2, tvb, offset, MAGIC_FRAME_LENGTH, ENC_NA);
-                        proto_item_append_text( ti, ", Magic" );
-
-                        http2_tree = proto_item_add_subtree(ti, ett_http2);
-                    
-                        proto_tree_add_item(http2_tree, hf_http2_magic, tvb,
-                                            offset, MAGIC_FRAME_LENGTH, ENC_BIG_ENDIAN);
-                        return;
-                }
+        /* tvb_memeql makes certain there are enough bytes in the buffer.
+         * returns -1 if there are not enough bytes or if there is not a
+         * match.  Returns 0 on a match */
+        if ( tvb_memeql( tvb, offset, kMagicHello, MAGIC_FRAME_LENGTH ) == 0 )
+        {
+                col_append_sep_str( pinfo->cinfo, COL_INFO, ", ", "Magic" );
+                
+                ti = proto_tree_add_item(tree, proto_http2, tvb, offset, MAGIC_FRAME_LENGTH, ENC_NA);
+                proto_item_append_text( ti, ", Magic" );
+                
+                http2_tree = proto_item_add_subtree(ti, ett_http2);
+                
+                proto_tree_add_item(http2_tree, hf_http2_magic, tvb,
+                                    offset, MAGIC_FRAME_LENGTH, ENC_BIG_ENDIAN);
+                return;
         }
 
 
@@ -157,14 +156,10 @@ dissect_http2_frame_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree )
 
 static guint get_http2_message_len( packet_info *pinfo, tvbuff_t *tvb, int offset )
 {
-        guint8 *magic;
         (void)(pinfo); /* Avoid the unused parameter warning */
 
-        if ( (tvb_length( tvb ) - offset) >= MAGIC_FRAME_LENGTH ) {
-                magic = tvb_get_ephemeral_string(tvb, offset, MAGIC_FRAME_LENGTH);
-                if ( magic && memcmp( magic, kMagicHello, MAGIC_FRAME_LENGTH ) == 0 ) {
-                        return MAGIC_FRAME_LENGTH;
-                }
+        if ( tvb_memeql( tvb, offset, kMagicHello, MAGIC_FRAME_LENGTH ) == 0 ) {
+                return MAGIC_FRAME_LENGTH;
         }
 
         return (guint)tvb_get_ntohs(tvb, offset) + FRAME_HEADER_LENGTH;
