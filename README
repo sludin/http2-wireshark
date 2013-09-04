@@ -1,3 +1,14 @@
+*** NOTE: This has now been incorporated into the wireshark trunk
+*** effectively deprecating this project.  All new work will occur
+*** there.  The wireshark version supports Draft 6 as of Sept, 4
+*** 2013.
+***
+*** Get the wireshark trunk here:
+***  svn checkout http://anonsvn.wireshark.org/wireshark/trunk wireshark
+***
+
+*******************************************************************
+
 Wireshark dissector for HTTP-draft-04/2.0
 
 This package provides skeletal support for dissecting HTTP/2.0
